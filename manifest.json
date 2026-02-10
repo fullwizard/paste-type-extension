@@ -1,12 +1,13 @@
 {
   "name": "Paste to Type Extension",
   "description": "Extension that turns anything you paste in into characters that your computer emulates as you typing, as long as you have the setting switched on.",
-  "version": "1.5",
+  "version": "1.6",
   "manifest_version": 3,
   "permissions": [
     "storage",
     "debugger",
-    "clipboardRead"
+    "clipboardRead",
+    "scripting"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -25,14 +26,11 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "scripts/content.js"
-      ],
+      "matches": ["<all_urls>"],
+      "js": ["scripts/content.js"],
       "all_frames": true,
-      "run_at": "document_start"
+      "match_about_blank": true,
+      "run_at": "document_end"
     }
   ]
 }
