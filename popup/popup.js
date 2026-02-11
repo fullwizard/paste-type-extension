@@ -5,6 +5,19 @@ const btn = document.getElementById('toggleButton');
 chrome.storage.local.get(['isActive'], (result) => {
     updateButtonUI(result.isActive || false);
 });
+const speedSlider = document.getElementById('speedSlider');
+
+// Load saved speed
+chrome.storage.local.get(['typingSpeed'], (result) => {
+  if (result.typingSpeed) {
+    speedSlider.value = result.typingSpeed;
+  }
+});
+
+// Save speed on change
+speedSlider.addEventListener('input', () => {
+  chrome.storage.local.set({ typingSpeed: parseInt(speedSlider.value) });
+});
 
 // 2. Handle the click
 btn.addEventListener('click', () => {

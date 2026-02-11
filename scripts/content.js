@@ -9,15 +9,19 @@ chrome.storage.onChanged.addListener((changes) => {
 });
 
 document.addEventListener('keydown', (event) => {
+    // 1. Start Typing (Ctrl+M)
     if (isActive && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'm') {
         event.preventDefault();
         event.stopImmediatePropagation();
-        
         try {
             chrome.runtime.sendMessage({ action: "start_typing_flow" });
         } catch (e) {
-            // This catches the error if the extension was updated but page wasn't refreshed
-            console.warn("Extension reloaded. Please refresh the page.");
+            console.warn("Extension context invalidated. Please refresh.");
         }
+    }
+
+    // 2. Emergency Stop (Escape)
+    if (event.key === "Escape") {
+        chrome.runtime.sendMessage({ action: "stop_typing" });
     }
 }, true);
