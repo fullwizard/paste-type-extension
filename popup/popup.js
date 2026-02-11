@@ -1,45 +1,46 @@
-const btn = document.getElementById('toggleButton');
-
-// 1. Get the saved state when the popup opens
-// We provide a default value { isActive: false } in case it's the first time
-chrome.storage.local.get(['isActive'], (result) => {
-    updateButtonUI(result.isActive || false);
-});
+const toggleBtn = document.getElementById('toggleButton');
 const speedSlider = document.getElementById('speedSlider');
+const instantToggle = document.getElementById('instantToggle');
 
-// Load saved speed
-chrome.storage.local.get(['typingSpeed'], (result) => {
-  if (result.typingSpeed) {
-    speedSlider.value = result.typingSpeed;
-  }
+// 1. Load initial states on popup open
+chrome.storage.local.get(['isActive', 'typingSpeed', 'isInstant'], (result) => {
+    updateButtonUI(result.isActive || false);
+    
+    if (result.typingSpeed !== undefined) {
+        speedSlider.value = result.typingSpeed;
+    }
+    
+    instantToggle.checked = result.isInstant || false;
 });
 
-// Save speed on change
-speedSlider.addEventListener('input', () => {
-  chrome.storage.local.set({ typingSpeed: parseInt(speedSlider.value) });
-});
-
-// 2. Handle the click
-btn.addEventListener('click', () => {
-    // Get current state from storage first
+// 2. Toggle button logic
+toggleBtn.addEventListener('click', () => {
     chrome.storage.local.get(['isActive'], (result) => {
         const newState = !result.isActive;
-
-        // Save the new state
         chrome.storage.local.set({ isActive: newState }, () => {
             updateButtonUI(newState);
-            console.log("State saved:", newState);
         });
     });
 });
 
-// 3. Helper function to keep things clean
+// 3. Slider logic
+speedSlider.addEventListener('input', () => {
+    chrome.storage.local.set({ typingSpeed: parseInt(speedSlider.value) });
+});
+
+// 4. Instant Mode logic (Now outside of the UI function)
+instantToggle.addEventListener('change', () => {
+    chrome.storage.local.set({ isInstant: instantToggle.checked });
+});
+
 function updateButtonUI(isActive) {
     if (isActive) {
-        btn.innerText = "Status: ON";
-        btn.style.backgroundColor = "#4CAF50"; // Nice green
+        toggleBtn.innerText = "Paste-Type is ON";
+        toggleBtn.style.backgroundColor = "#4CAF50";
+        toggleBtn.style.color = "white";
     } else {
-        btn.innerText = "Status: OFF";
-        btn.style.backgroundColor = "#f44336"; // Nice red
+        toggleBtn.innerText = "Paste-Type is OFF";
+        toggleBtn.style.backgroundColor = "#f44336";
+        toggleBtn.style.color = "white";
     }
 }

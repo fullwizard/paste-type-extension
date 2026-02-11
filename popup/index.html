@@ -3,20 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Paste to Type</title>
+    <style>
+        body { width: 220px; padding: 15px; font-family: sans-serif; }
+        button { 
+            width: 100%; padding: 12px; cursor: pointer; border: none; 
+            border-radius: 4px; font-weight: bold; transition: 0.2s;
+            margin-bottom: 15px; background-color: #eee;
+        }
+        .speed-container { border-top: 1px solid #ddd; padding-top: 10px; }
+        label { display: block; font-size: 13px; margin-bottom: 8px; color: #444; }
+    </style>
 </head>
 <body>
+    <button id="toggleButton">Loading...</button>
 
-    <button id = "toggleButton"> Paste-Type is OFF</button>
-    <script src="popup.js"></script>
-
-    <div class="speed-container" style="margin-top: 15px;">
-  <label for="speedSlider" style="display: block; font-size: 14px; margin-bottom: 5px;">Typing Speed</label>
-  <input type="range" id="speedSlider" min="1" max="100" value="50" style="width: 100%;">
-  <div style="display: flex; justify-content: space-between; font-size: 10px; color: #666;">
-    <span>Slow</span>
-    <span>Fast</span>
-  </div>
+    <div class="speed-container">
+        <label for="speedSlider">Typing Speed</label>
+        <input type="range" id="speedSlider" min="0" max="100" value="50" style="width: 100%;">
+        <div style="display: flex; justify-content: space-between; font-size: 10px; color: #888;">
+            <span>Slow</span>
+            <span>Fast</span>
+        </div>
+    </div>
+    <div style="margin-top: 10px; display: flex; align-items: center;">
+    <input type="checkbox" id="instantToggle">
+    <label for="instantToggle" style="font-size: 13px; margin-left: 8px;">Instant Mode (Experimental)</label>
 </div>
+    <script src="popup.js"></script>
+    
 </body>
 </html>
