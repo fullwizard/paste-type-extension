@@ -1,66 +1,51 @@
 let isTyping = false;
 let currentTabId = null;
 
-// Handle manual "Cancel" from the browser debug bar
 chrome.debugger.onDetach.addListener((source) => {
-  if (source.tabId === currentTabId) {
-    isTyping = false;
-  }
+  if (source.tabId === currentTabId) isTyping = false;
 });
 
 chrome.runtime.onMessage.addListener((message, sender) => {
-  // Emergency Stop (from Escape key in content.js)
   if (message.action === "stop_typing") {
     isTyping = false;
-    if (currentTabId) {
-      chrome.debugger.detach({ tabId: currentTabId }, () => {
-        if (chrome.runtime.lastError) { /* ignore already detached */ }
-      });
-    }
+    if (currentTabId) chrome.debugger.detach({ tabId: currentTabId }, () => {});
     return;
   }
 
   if (message.action === "start_typing_flow") {
-    if (isTyping) return; // Prevent multiple loops if triggered twice
-
+    if (isTyping) return;
     const tabId = sender.tab.id;
     const frameId = sender.frameId;
 
-    // Fetch user preferences
     chrome.storage.local.get(['typingSpeed', 'isInstant'], (settings) => {
       const isInstant = settings.isInstant || false;
       const userSpeed = settings.typingSpeed || 50;
-      
-      // Map 1-100 scale to delay: 100 is fast (~10ms), 1 is slow (~500ms)
       const baseDelay = Math.max(10, 500 - (userSpeed * 4.9));
 
       chrome.scripting.executeScript({
         target: { tabId: tabId, frameIds: [frameId] },
         func: () => navigator.clipboard.readText().catch(() => null)
       }).then(async (results) => {
-        const text = results[0]?.result;
+        let text = results[0]?.result;
         if (!text) return;
+
+        // --- THE "PURIFY" STEP ---
+        // 1. Convert to a standard string to drop object metadata
+        // 2. Strip non-ASCII/Hidden control characters that cause jumping
+        // 3. Normalize all whitespace/newlines
+        text = text.toString()
+                   .replace(/[\u200B-\u200D\uFEFF]/g, '') // Remove hidden zero-width chars
+                   .replace(/\u00A0/g, ' ')               // Non-breaking space to Space
+                   .replace(/\r\n/g, '\n')                // Normalize newlines
+                   .replace(/\r/g, '\n');
 
         chrome.debugger.attach({ tabId: tabId }, "1.2", async () => {
           if (chrome.runtime.lastError) {
-            // If already attached, detach and cycle the connection
             chrome.debugger.detach({ tabId: tabId }, () => {
-              chrome.debugger.attach({ tabId: tabId }, "1.2", () => {
-                isTyping = true;
-                currentTabId = tabId;
-                startTyping(tabId, text, baseDelay, isInstant);
-              });
+              chrome.debugger.attach({ tabId: tabId }, "1.2", () => runTypingSequence(tabId, text, baseDelay, isInstant));
             });
           } else {
-            isTyping = true;
-            currentTabId = tabId;
-            await startTyping(tabId, text, baseDelay, isInstant);
-            
-            // Clean up when finished
-            if (isTyping) {
-              chrome.debugger.detach({ tabId: tabId });
-              isTyping = false;
-            }
+            await runTypingSequence(tabId, text, baseDelay, isInstant);
           }
         });
       });
@@ -68,51 +53,51 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   }
 });
 
-async function startTyping(tabId, text, baseDelay, isInstant) {
+async function runTypingSequence(tabId, text, baseDelay, isInstant) {
+  isTyping = true;
+  currentTabId = tabId;
+
   for (const char of text) {
     if (!isTyping) break;
+    
+    await simulateHardwareKey(tabId, char);
+    
+    // BACK TO TRUE SPEED: No more chunking pauses
+    const delay = isInstant ? 0 : (baseDelay + (Math.random() * (baseDelay * 0.1)));
+    if (delay > 0) await new Promise(r => setTimeout(r, delay));
+  }
 
-    try {
-      await simulateHardwareKey(tabId, char);
-      
-      // THE CONDITIONAL:
-      if (!isInstant) {
-        // Human Mode: Use the slider delay + variance
-        const variance = baseDelay * 0.2;
-        const finalDelay = baseDelay + (Math.random() * variance - (variance / 2));
-        await new Promise(r => setTimeout(r, finalDelay));
-      } else {
-        // Instant Mode: No calculated wait. 
-        // We use 0ms just to keep the browser from freezing up.
-        await new Promise(r => setTimeout(r, 0));
-      }
-    } catch (e) {
-      isTyping = false;
-      break;
-    }
+  if (isTyping) {
+    chrome.debugger.detach({ tabId: tabId });
+    isTyping = false;
   }
 }
 
 async function simulateHardwareKey(tabId, char) {
-  return new Promise((resolve, reject) => {
-    // Send keyDown ONLY (includes character data). Sending "char" causes double letters in Docs.
-    chrome.debugger.sendCommand({ tabId: tabId }, "Input.dispatchKeyEvent", {
-      type: "keyDown",
-      text: char,
-      unmodifiedText: char,
-      key: char,
-      windowsVirtualKeyCode: char.toUpperCase().charCodeAt(0)
-    }, () => {
-      if (chrome.runtime.lastError) return reject();
-      
-      // Send keyUp to finish the stroke
-      chrome.debugger.sendCommand({ tabId: tabId }, "Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: char
-      }, () => {
-        if (chrome.runtime.lastError) return reject();
-        resolve();
-      });
-    });
+  const specialKeys = {
+    '(': { code: 57, shift: true }, ')': { code: 48, shift: true },
+    '%': { code: 53, shift: true }, ';': { code: 186, shift: false },
+    ':': { code: 186, shift: true }, '.': { code: 190, shift: false },
+    ',': { code: 188, shift: false }, '-': { code: 189, shift: false },
+    '!': { code: 49, shift: true }, '?': { code: 191, shift: true },
+    ' ': { code: 32, shift: false }, '\n': { code: 13, shift: false },
+    '&': { code: 55, shift: true }, '"': { code: 222, shift: true },
+    "'": { code: 222, shift: false }
+  };
+
+  const isUpper = /[A-Z]/.test(char);
+  const spec = specialKeys[char];
+  const keyCode = spec ? spec.code : char.toUpperCase().charCodeAt(0);
+  const needsShift = spec ? spec.shift : isUpper;
+  const modifiers = needsShift ? 8 : 0;
+
+  // KeyDown and KeyUp in immediate succession
+  await chrome.debugger.sendCommand({ tabId: tabId }, "Input.dispatchKeyEvent", {
+    type: "keyDown", text: char, unmodifiedText: char, key: char,
+    modifiers: modifiers, windowsVirtualKeyCode: keyCode
+  });
+
+  await chrome.debugger.sendCommand({ tabId: tabId }, "Input.dispatchKeyEvent", {
+    type: "keyUp", key: char, modifiers: modifiers, windowsVirtualKeyCode: keyCode
   });
 }
