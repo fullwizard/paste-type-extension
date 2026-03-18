@@ -1,46 +1,51 @@
 const toggleBtn = document.getElementById('toggleButton');
 const speedSlider = document.getElementById('speedSlider');
+const randomSlider = document.getElementById('randomSlider');
+const typoSlider = document.getElementById('typoSlider');
 const instantToggle = document.getElementById('instantToggle');
+const noCorrectToggle = document.getElementById('noCorrectToggle');
 
-// 1. Load initial states on popup open
-chrome.storage.local.get(['isActive', 'typingSpeed', 'isInstant'], (result) => {
+// 1. Load initial states from storage
+chrome.storage.local.get(['isActive', 'typingSpeed', 'isInstant', 'randomness', 'typoFreq', 'noCorrect'], (result) => {
     updateButtonUI(result.isActive || false);
-    
-    if (result.typingSpeed !== undefined) {
-        speedSlider.value = result.typingSpeed;
-    }
-    
+    if (result.typingSpeed !== undefined) speedSlider.value = result.typingSpeed;
+    if (result.randomness !== undefined) randomSlider.value = result.randomness;
+    if (result.typoFreq !== undefined) typoSlider.value = result.typoFreq;
     instantToggle.checked = result.isInstant || false;
+    noCorrectToggle.checked = result.noCorrect || false;
 });
 
-// 2. Toggle button logic
+// 2. Event Listeners for UI interaction
 toggleBtn.addEventListener('click', () => {
     chrome.storage.local.get(['isActive'], (result) => {
         const newState = !result.isActive;
-        chrome.storage.local.set({ isActive: newState }, () => {
-            updateButtonUI(newState);
-        });
+        chrome.storage.local.set({ isActive: newState }, () => updateButtonUI(newState));
     });
 });
 
-// 3. Slider logic
 speedSlider.addEventListener('input', () => {
     chrome.storage.local.set({ typingSpeed: parseInt(speedSlider.value) });
 });
 
-// 4. Instant Mode logic (Now outside of the UI function)
+randomSlider.addEventListener('input', () => {
+    chrome.storage.local.set({ randomness: parseInt(randomSlider.value) });
+});
+
+typoSlider.addEventListener('input', () => {
+    chrome.storage.local.set({ typoFreq: parseInt(typoSlider.value) });
+});
+
 instantToggle.addEventListener('change', () => {
     chrome.storage.local.set({ isInstant: instantToggle.checked });
 });
 
+noCorrectToggle.addEventListener('change', () => {
+    chrome.storage.local.set({ noCorrect: noCorrectToggle.checked });
+});
+
+// UI Helper to change button appearance
 function updateButtonUI(isActive) {
-    if (isActive) {
-        toggleBtn.innerText = "Paste-Type is ON";
-        toggleBtn.style.backgroundColor = "#4CAF50";
-        toggleBtn.style.color = "white";
-    } else {
-        toggleBtn.innerText = "Paste-Type is OFF";
-        toggleBtn.style.backgroundColor = "#f44336";
-        toggleBtn.style.color = "white";
-    }
+    toggleBtn.innerText = isActive ? "Paste-Type is ON" : "Paste-Type is OFF";
+    toggleBtn.style.backgroundColor = isActive ? "#4CAF50" : "#f44336";
+    toggleBtn.style.color = "white";
 }

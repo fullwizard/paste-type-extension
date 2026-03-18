@@ -5,32 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Paste to Type</title>
     <style>
-        body { width: 220px; padding: 15px; font-family: sans-serif; }
+        body { width: 240px; padding: 15px; font-family: sans-serif; color: #333; }
         button { 
             width: 100%; padding: 12px; cursor: pointer; border: none; 
             border-radius: 4px; font-weight: bold; transition: 0.2s;
             margin-bottom: 15px; background-color: #eee;
         }
-        .speed-container { border-top: 1px solid #ddd; padding-top: 10px; }
-        label { display: block; font-size: 13px; margin-bottom: 8px; color: #444; }
+        .section { border-top: 1px solid #ddd; padding-top: 10px; margin-top: 10px; }
+        label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #555; }
+        input[type="range"] { width: 100%; margin-bottom: 10px; }
+        .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .hint { font-size: 10px; color: #888; display: flex; justify-content: space-between; margin-top: -8px; margin-bottom: 10px; }
+        .checkbox-label { font-size: 11px; font-weight: normal; cursor: pointer; }
     </style>
 </head>
 <body>
     <button id="toggleButton">Loading...</button>
 
-    <div class="speed-container">
+    <div class="row">
+        <label for="instantToggle" style="margin: 0;">Instant Mode</label>
+        <input type="checkbox" id="instantToggle">
+    </div>
+
+    <div class="section">
         <label for="speedSlider">Typing Speed</label>
-        <input type="range" id="speedSlider" min="0" max="100" value="50" style="width: 100%;">
-        <div style="display: flex; justify-content: space-between; font-size: 10px; color: #888;">
-            <span>Slow</span>
-            <span>Fast</span>
+        <input type="range" id="speedSlider" min="1" max="100" value="50">
+        
+        <label for="randomSlider">Human Randomness</label>
+        <input type="range" id="randomSlider" min="0" max="100" value="20">
+        
+        <label for="typoSlider">Typo Frequency</label>
+        <input type="range" id="typoSlider" min="0" max="20" value="0">
+        <div class="hint"><span>Perfect</span><span>Clumsy</span></div>
+
+        <div class="row" style="margin-top: 10px;">
+            <label for="noCorrectToggle" class="checkbox-label">Don't correct typos</label>
+            <input type="checkbox" id="noCorrectToggle">
         </div>
     </div>
-    <div style="margin-top: 10px; display: flex; align-items: center;">
-    <input type="checkbox" id="instantToggle">
-    <label for="instantToggle" style="font-size: 13px; margin-left: 8px;">Instant Mode (Experimental)</label>
-</div>
+
     <script src="popup.js"></script>
-    
 </body>
 </html>

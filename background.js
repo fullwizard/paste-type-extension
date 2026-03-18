@@ -6,46 +6,62 @@ chrome.debugger.onDetach.addListener((source) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender) => {
-  if (message.action === "stop_typing") {
-    isTyping = false;
-    if (currentTabId) chrome.debugger.detach({ tabId: currentTabId }, () => {});
-    return;
-  }
+  if (message.action === "stop_typing") { isTyping = false; return; }
 
   if (message.action === "start_typing_flow") {
     if (isTyping) return;
     const tabId = sender.tab.id;
-    const frameId = sender.frameId;
 
-    chrome.storage.local.get(['typingSpeed', 'isInstant'], (settings) => {
+    chrome.storage.local.get(['typingSpeed', 'isInstant', 'randomness', 'typoFreq', 'isActive', 'noCorrect'], (settings) => {
+      if (!settings.isActive) return;
+
       const isInstant = settings.isInstant || false;
-      const userSpeed = settings.typingSpeed || 50;
-      const baseDelay = Math.max(10, 500 - (userSpeed * 4.9));
+      const baseDelay = Math.max(5, 500 - (settings.typingSpeed * 4.9));
+      const randomness = (settings.randomness || 0) / 100;
+      const typoFreq = (settings.typoFreq || 0) / 100;
+      const noCorrect = settings.noCorrect || false;
 
       chrome.scripting.executeScript({
-        target: { tabId: tabId, frameIds: [frameId] },
+        target: { tabId: tabId },
         func: () => navigator.clipboard.readText().catch(() => null)
       }).then(async (results) => {
-        let text = results[0]?.result;
-        if (!text) return;
+        let rawText = results[0]?.result;
+        if (!rawText) return;
 
-        // --- THE "PURIFY" STEP ---
-        // 1. Convert to a standard string to drop object metadata
-        // 2. Strip non-ASCII/Hidden control characters that cause jumping
-        // 3. Normalize all whitespace/newlines
-        text = text.toString()
-                   .replace(/[\u200B-\u200D\uFEFF]/g, '') // Remove hidden zero-width chars
-                   .replace(/\u00A0/g, ' ')               // Non-breaking space to Space
-                   .replace(/\r\n/g, '\n')                // Normalize newlines
-                   .replace(/\r/g, '\n');
+        // --- PRE-PROCESS: Fix Quotes & Newlines ---
+        let processedText = rawText.toString()
+          .replace(/[\u2018\u2019]/g, "'") // Fix curly single quotes
+          .replace(/[\u201C\u201D]/g, '"') // Fix curly double quotes
+          .replace(/\r\n/g, "\n")          
+          .replace(/\r/g, "\n");           
+
+        const cleanText = Array.from(processedText)
+          .map(char => {
+            const code = char.charCodeAt(0);
+            if ((code >= 32 && code <= 126) || code === 10 || code === 9) return char;
+            if (code === 160) return " "; 
+            return ""; 
+          }).join("");
+
+        // Clipboard Flush to kill Bold Metadata
+        await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: (t) => {
+                const blob = new Blob([t], { type: "text/plain" });
+                const data = [new ClipboardItem({ "text/plain": blob })];
+                navigator.clipboard.write(data).catch(() => {});
+            },
+            args: [cleanText]
+        });
 
         chrome.debugger.attach({ tabId: tabId }, "1.2", async () => {
           if (chrome.runtime.lastError) {
-            chrome.debugger.detach({ tabId: tabId }, () => {
-              chrome.debugger.attach({ tabId: tabId }, "1.2", () => runTypingSequence(tabId, text, baseDelay, isInstant));
-            });
+             chrome.debugger.detach({ tabId: tabId }, () => {
+               chrome.debugger.attach({ tabId: tabId }, "1.2", () => startSequence(tabId, cleanText, baseDelay, isInstant, randomness, typoFreq, noCorrect));
+             });
           } else {
-            await runTypingSequence(tabId, text, baseDelay, isInstant);
+             await new Promise(r => setTimeout(r, 150)); 
+             await startSequence(tabId, cleanText, baseDelay, isInstant, randomness, typoFreq, noCorrect);
           }
         });
       });
@@ -53,51 +69,72 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   }
 });
 
-async function runTypingSequence(tabId, text, baseDelay, isInstant) {
+async function startSequence(tabId, text, baseDelay, isInstant, randomness, typoFreq, noCorrect) {
   isTyping = true;
   currentTabId = tabId;
 
   for (const char of text) {
     if (!isTyping) break;
-    
-    await simulateHardwareKey(tabId, char);
-    
-    // BACK TO TRUE SPEED: No more chunking pauses
-    const delay = isInstant ? 0 : (baseDelay + (Math.random() * (baseDelay * 0.1)));
-    if (delay > 0) await new Promise(r => setTimeout(r, delay));
+
+    if (!isInstant && typoFreq > 0 && Math.random() < typoFreq && !/[\s\n]/.test(char)) {
+      const keys = "asdfghjklqwertyuiop";
+      const wrongChar = keys[Math.floor(Math.random() * keys.length)];
+      await simulateKey(tabId, wrongChar);
+      if (!noCorrect) {
+        await new Promise(r => setTimeout(r, baseDelay * 1.5)); 
+        await simulateKey(tabId, 'Backspace');
+        await new Promise(r => setTimeout(r, baseDelay * 0.8)); 
+      }
+    }
+
+    await simulateKey(tabId, char);
+
+    if (!isInstant) {
+      const varAmount = baseDelay * randomness;
+      const finalDelay = baseDelay + (Math.random() * varAmount * 2 - varAmount);
+      await new Promise(r => setTimeout(r, Math.max(2, finalDelay)));
+    } else {
+      await new Promise(r => setTimeout(r, 0));
+    }
   }
 
-  if (isTyping) {
-    chrome.debugger.detach({ tabId: tabId });
-    isTyping = false;
-  }
+  if (isTyping) chrome.debugger.detach({ tabId: tabId });
+  isTyping = false;
 }
 
-async function simulateHardwareKey(tabId, char) {
-  const specialKeys = {
-    '(': { code: 57, shift: true }, ')': { code: 48, shift: true },
-    '%': { code: 53, shift: true }, ';': { code: 186, shift: false },
-    ':': { code: 186, shift: true }, '.': { code: 190, shift: false },
-    ',': { code: 188, shift: false }, '-': { code: 189, shift: false },
-    '!': { code: 49, shift: true }, '?': { code: 191, shift: true },
-    ' ': { code: 32, shift: false }, '\n': { code: 13, shift: false },
-    '&': { code: 55, shift: true }, '"': { code: 222, shift: true },
-    "'": { code: 222, shift: false }
+async function simulateKey(tabId, char) {
+  const special = {
+    '(': { code: 57, s: true }, ')': { code: 48, s: true },
+    '.': { code: 190, s: false }, ',': { code: 188, s: false },
+    ' ': { code: 32, s: false }, '\n': { code: 13, s: false },
+    '\t': { code: 9, s: false }, 'Backspace': { code: 8, s: false }, 
+    '-': { code: 189, s: false }, '!': { code: 49, s: true }, 
+    '?': { code: 191, s: true }, '"': { code: 222, s: true }, 
+    "'": { code: 222, s: false }, ';': { code: 186, s: false }, 
+    ':': { code: 186, s: true }, '/': { code: 191, s: false }, 
+    '\\': { code: 220, s: false }, '&': { code: 55, s: true }
   };
 
-  const isUpper = /[A-Z]/.test(char);
-  const spec = specialKeys[char];
+  const spec = special[char];
   const keyCode = spec ? spec.code : char.toUpperCase().charCodeAt(0);
-  const needsShift = spec ? spec.shift : isUpper;
-  const modifiers = needsShift ? 8 : 0;
+  const mods = (spec?.s || /[A-Z]/.test(char)) ? 8 : 0;
+  const isEnter = char === '\n';
+  
+  const params = {
+    windowsVirtualKeyCode: keyCode,
+    modifiers: mods,
+    key: isEnter ? "Enter" : char,
+    text: (char === 'Backspace' || isEnter) ? "" : char,
+    unmodifiedText: (char === 'Backspace' || isEnter) ? "" : char
+  };
 
-  // KeyDown and KeyUp in immediate succession
-  await chrome.debugger.sendCommand({ tabId: tabId }, "Input.dispatchKeyEvent", {
-    type: "keyDown", text: char, unmodifiedText: char, key: char,
-    modifiers: modifiers, windowsVirtualKeyCode: keyCode
+  await chrome.debugger.sendCommand({ tabId: tabId }, "Input.dispatchKeyEvent", { 
+    type: isEnter ? "rawKeyDown" : "keyDown", 
+    ...params 
   });
-
-  await chrome.debugger.sendCommand({ tabId: tabId }, "Input.dispatchKeyEvent", {
-    type: "keyUp", key: char, modifiers: modifiers, windowsVirtualKeyCode: keyCode
+  
+  await chrome.debugger.sendCommand({ tabId: tabId }, "Input.dispatchKeyEvent", { 
+    type: "keyUp", 
+    ...params 
   });
 }
